@@ -2,7 +2,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const store=new Map(),els=new Map();
 function el(id){if(!els.has(id))els.set(id,{style:{},dataset:{},classList:{toggle(){}},setAttribute(){},matches(){return false},querySelectorAll(){return []},showModal(){},close(){},focus(){},click(){this.onclick?.()},innerHTML:'',textContent:''});return els.get(id);}
 const events=[];
-const context={console,Math,Date,Number,String,Object,JSON,crypto:require('crypto').webcrypto,setTimeout,Blob,URL,confirm:()=>true,window:{scrollTo(){},addEventListener(){},GEO_REPORTER:{status:()=>({configured:false,pending:0}),enqueue:event=>events.push(event)}},document:{querySelector(s){return s==='dialog[open]'?null:el(s)},addEventListener(){},createElement(){return el('download')}},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v)}};
+const context={console,Math,Date,Number,String,Object,JSON,crypto:require('crypto').webcrypto,setTimeout,Blob,URL,confirm:()=>true,window:{scrollTo(){},addEventListener(){},GEO_CHALLENGE:{mount(){}},GEO_REPORTER:{status:()=>({configured:false,pending:0}),enqueue:event=>events.push(event)}},document:{querySelector(s){return s==='dialog[open]'?null:el(s)},addEventListener(){},createElement(){return el('download')}},sessionStorage:{getItem:()=>null,setItem(){}},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v)}};
 vm.createContext(context);vm.runInContext(fs.readFileSync('dist/questions.js','utf8'),context);
 const src=fs.readFileSync('dist/app.js','utf8').replace('profile();home();','window.TEST={start,choose,submit,nextRound,roundResult,stats,profile,score,getSession:()=>session};profile();home();');
 vm.runInContext(src,context);const t=context.window.TEST,Q=context.window.QUESTIONS;

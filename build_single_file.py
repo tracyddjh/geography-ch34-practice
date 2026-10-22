@@ -7,7 +7,7 @@ html=(dist/'index.html').read_text(encoding='utf8')
 html=html.replace('<link rel="stylesheet" href="style.css">','<style>'+(dist/'style.css').read_text(encoding='utf8')+'</style>')
 assets={p.name:'data:image/png;base64,'+base64.b64encode(p.read_bytes()).decode() for p in (dist/'assets').glob('*.png')}
 html=html.replace('<script src="config.js"></script>','<script>window.EMBEDDED_ASSETS='+json.dumps(assets)+';</script><script>'+(dist/'config.js').read_text(encoding='utf8')+'</script>')
-for name in ['reporting.js','questions.js','app.js']:
+for name in ['reporting.js','questions.js','challenge.js','app.js']:
     source=(dist/name).read_text(encoding='utf8')
     if name=='questions.js':
         for filename,data in assets.items():source=source.replace('assets/'+filename,data)

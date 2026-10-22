@@ -17,16 +17,18 @@
     try{save();}catch{lastError='瀏覽器無法儲存回傳佇列，請勿關閉網頁，請匯出紀錄';}
     notify();flush();return item.eventId;
   }
-  function receipt(url,item){return new Promise((resolve,reject)=>{
+  async function receipt(url,item){
     const callback='geoReceipt_'+uuid().replace(/-/g,'');
-    const script=document.createElement('script');
-    let timer;
-    function cleanup(){clearTimeout(timer);script.remove();delete window[callback];}
-    window[callback]=data=>{cleanup();resolve(data);};
-    script.onerror=()=>{cleanup();reject(new Error('無法確認 GAS 回覆，請檢查部署權限與網路'));};
     const u=new URL(url);u.searchParams.set('action','receipt');u.searchParams.set('eventId',item.eventId);u.searchParams.set('receiptToken',item.receiptToken);u.searchParams.set('callback',callback);
-    script.src=u.href;timer=setTimeout(()=>{cleanup();reject(new Error('GAS 回覆逾時，紀錄保留等待重試'));},15000);document.head.appendChild(script);
-  });}
+    const control=new AbortController(),timer=setTimeout(()=>control.abort(),20000);
+    try{
+      const response=await fetch(u.href,{credentials:'omit',mode:'cors',signal:control.signal});
+      if(!response.ok)throw new Error('無法確認 GAS 回覆，請稍後重試');
+      const text=await response.text(),prefix=callback+'(';
+      if(!text.startsWith(prefix)||!text.endsWith(');'))throw new Error('收件回覆格式不符');
+      return JSON.parse(text.slice(prefix.length,-2));
+    }finally{clearTimeout(timer);}
+  }
   async function flush(){
     if(busy||!queue.length||!validUrl(config().gasUrl)||!navigator.onLine)return;
     busy=true;lastError='';notify();
@@ -38,12 +40,18 @@
         const response=await receipt(config().gasUrl,item);
         if(!response?.ok)throw new Error(response?.error||'GAS 尚未確認寫入，將保留紀錄再試');
         queue.shift();save();confirmed++;notify();
+        window.dispatchEvent(new CustomEvent('geo-rpc-result',{detail:{eventId:item.eventId,result:response.result}}));
       }
     }catch(error){lastError=error.message||'回傳失敗，紀錄保留等待重試';}
     finally{busy=false;notify();}
   }
   function exportPending(){return JSON.stringify({format:'geo34-pending-v2',events:queue},null,2);}
-  window.GEO_REPORTER={enqueue,flush,status,exportPending,validUrl};
+  function request(event){return new Promise((resolve,reject)=>{
+    let id,timer;const listener=e=>{if(e.detail.eventId!==id)return;clearTimeout(timer);window.removeEventListener('geo-rpc-result',listener);resolve(e.detail.result);};
+    window.addEventListener('geo-rpc-result',listener);id=enqueue(event);
+    timer=setTimeout(()=>{window.removeEventListener('geo-rpc-result',listener);reject(new Error('尚未收到確認；資料已保留，請回首頁重試回傳後再進入挑戰。'));},60000);
+  });}
+  window.GEO_REPORTER={enqueue,flush,status,exportPending,validUrl,request};
   window.addEventListener('online',flush);
   setInterval(flush,30000);
   setTimeout(flush,1000);
