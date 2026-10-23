@@ -49,6 +49,7 @@ function doPost(e){
     lock=LockService.getScriptLock();lock.waitLock(25000);
     const ss=spreadsheet_();
     if(d.type==='selfStudyExam')return selfStudyExamPost_(ss,d);
+    if(d.type==='mixedExam')return mixedExamPost_(ss,d);
     if(d.type)return challengePost_(ss,d);
     const log=ensureSheet_(ss,'答題紀錄',LOG_HEADERS);
     const found=log.getLastRow()>1?log.getRange(2,1,log.getLastRow()-1,1).createTextFinder(d.eventId).matchEntireCell(true).findNext():null;
