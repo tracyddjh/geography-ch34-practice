@@ -61,7 +61,7 @@ function doPost(e){
       log.appendRow([d.eventId,d.receiptToken,new Date(),d.assignmentId,d.trainingId,safeText_(d.student.className.trim()),d.student.seat,safeText_(d.student.name.trim()),d.questionId,'ABCD'[d.selected],d.selected===ANSWERS[d.questionId],d.createdAt]);
     }
     // Also rebuild for duplicate retries, in case the prior summary update failed.
-    updateSummary_(ss,d);SpreadsheetApp.flush();
+    updateSummary_(ss,d);updateMasteryThree_(ss,d);SpreadsheetApp.flush();
     CacheService.getScriptCache().put(d.eventId,JSON.stringify({token:d.receiptToken,ok:true}),21600);
     return json_({ok:true});
   }catch(error){console.error(String(error));return json_({ok:false,error:'寫入失敗，請確認部署及資料格式'});}
@@ -131,8 +131,7 @@ function challengePost_(ss,d){
  const row=idx<0?null:rows[idx];
  let result;
  if(d.type==='challengeStart'){
-  if(!hasMastery_(ss,d))result={ok:false,error:'老師端尚未確認全部精熟，請先回首頁重試回傳，再進入挑戰。'};
-  else {
+  {
    const started=row?new Date(row[6]).getTime():Date.now(),attemptId=row?row[5]:d.eventId;
    let order;
    if(row){try{order=JSON.parse(row[10]).order;}catch{}}

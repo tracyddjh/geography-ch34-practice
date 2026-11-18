@@ -27,19 +27,19 @@
  function clearTimer(){clearInterval(timer);timer=null;}
  function mount(target,context){clearTimer();view++;app=target;ctx=context;run=null;
   const section=document.createElement('section');section.className='cup-section';
-  const unlocked=!!ctx.profile().student&&ctx.mastered();
-  section.innerHTML=`<div class="section-head"><div><div class="eyebrow">GEOGRAPHY CHALLENGE CUP</div><h2>地理闖關挑戰賽 🏆</h2></div><span class="pill">${unlocked?'已解鎖':'完成全部精熟後解鎖'}</span></div><div class="cup-entry-guide"><p>先完成「中國的產業轉型與區域差異」與「全球化下的中國」兩課的精熟練習。</p><p><strong>第3–4課共20題，每題答對兩次，就可以進入地理闖關挑戰賽拿禮物！</strong></p><p class="muted">精熟紀錄成功回傳後解鎖。挑戰賽共3場，每場10題（第3、4課各5題）；同場題目相同，題序隨機。</p>${unlocked?'<p><strong>✓ 你已完成精熟練習，可以開始挑戰！</strong></p>':''}</div><div class="cup-cards">${rounds.map((_,i)=>`<article class="chapter-card"><span class="chapter-no">CHALLENGE 0${i+1}</span><h3>第 ${i+1} 場挑戰</h3><p>第 3 課 5 題 ＋ 第 4 課 5 題</p><button class="primary" data-cup="${i+1}" ${unlocked?'':'disabled'}>${unlocked?'進入挑戰 →':'尚未解鎖'}</button></article>`).join('')}</div><p class="muted">可以重複正式挑戰，每場保留最高分；同分取較短用時。每次出題順序都與上一次不同。中途離開仍繼續計時。排行榜只公開班級、座號。</p><button id="cup-board" class="secondary">查看分班排行榜 ↗</button><p id="cup-message" role="status"></p>`;
+  const unlocked=!!ctx.profile().student;
+  section.innerHTML=`<div class="section-head"><div><div class="eyebrow">GEOGRAPHY CHALLENGE CUP</div><h2>地理闖關挑戰賽 🏆</h2></div><span class="pill">${unlocked?'隨時可挑戰':'填寫學生資料即可挑戰'}</span></div><div class="cup-entry-guide"><p><strong>填寫班級、座號與姓名即可開始，不必先完成精熟練習或等待練習成績回傳。</strong></p><p>共3場，每場10題（第3、4課各5題）；同場題目相同，每次題序隨機。</p><p class="muted">挑戰分數送出並確認後，列入本班排行榜。</p></div><div class="cup-cards">${rounds.map((_,i)=>`<article class="chapter-card"><span class="chapter-no">CHALLENGE 0${i+1}</span><h3>第 ${i+1} 場挑戰</h3><p>第 3 課 5 題 ＋ 第 4 課 5 題</p><button class="primary" data-cup="${i+1}" ${unlocked?'':'disabled'}>${unlocked?'進入挑戰 →':'請先填寫資料'}</button></article>`).join('')}</div><p class="muted">可以重複正式挑戰，每場保留最高分；同分取較短用時。每次出題順序都與上一次不同。中途離開仍繼續計時。排行榜只公開班級、座號。</p><button id="cup-board" class="secondary">查看分班排行榜 ↗</button><p id="cup-message" role="status"></p>`;
   target.querySelector('.cards').after(section);
   section.querySelectorAll('[data-cup]').forEach(b=>b.onclick=()=>enter(Number(b.dataset.cup)));
   section.querySelector('#cup-board').onclick=()=>leaderboard(1);
  }
- async function enter(round){if(!ctx.profile().student||!ctx.mastered())return;
-  const marker=view;const message=$('#cup-message');message.textContent='正在確認精熟資格與挑戰紀錄…';
+ async function enter(round){if(!ctx.profile().student)return;
+  const marker=view;const message=$('#cup-message');message.textContent='正在建立挑戰場次…';
   app.querySelectorAll('[data-cup]').forEach(b=>b.disabled=true);
   try{
    const info=await rpc({action:'challengeInfo'});if(info.version!==VERSION||JSON.stringify(info.rounds)!==JSON.stringify(rounds))throw new Error('題組版本已更新，請重新整理網站。');
-   await window.GEO_REPORTER.flush();if(window.GEO_REPORTER.status().pending)throw new Error('還有答題紀錄尚未確認回傳，請先重試回傳。');
-   const result=await window.GEO_REPORTER.request(envelope('challengeStart',round));
+
+   const result=await window.CUP_REPORTER.request(envelope('challengeStart',round));
    if(marker!==view)return;if(!result?.ok)throw new Error(result?.error||'挑戰服務需要更新');
    if(result.completed)return resultPage(round,result,false,true);
    let old;try{old=JSON.parse(sessionStorage.getItem(stateKey(round)));}catch{}
@@ -62,7 +62,7 @@
   if(run.practice){const correct=run.answers.filter(a=>window.QUESTIONS.find(q=>q.id===a.questionId).answer===a.selected).length;return resultPage(run.round,{correct,elapsed:Math.ceil((Date.now()-run.clockBase)/1000)},true);}
   const marker=view;app.innerHTML='<section class="round-title"><h1>10 題完成，正在確認成績…</h1><p>請保持網頁開啟。成績經老師端確認後才會列入排名。</p><p id="cup-error" role="status"></p><button id="cup-retry" hidden>重試送出</button><button id="cup-home">回到首頁</button></section>';
   $('#cup-home').onclick=()=>ctx.home();$('#cup-retry').onclick=finish;
-  try{await window.GEO_REPORTER.flush();const result=await window.GEO_REPORTER.request({...envelope('challengeFinish',run.round),attemptId:run.attemptId,answers:run.answers});if(marker!==view)return;if(!result?.ok)throw new Error(result?.error||'尚未確認成績');const round=run.round;sessionStorage.removeItem(stateKey(round));resultPage(round,result,false);}
+  try{await window.CUP_REPORTER.flush();const result=await window.CUP_REPORTER.request({...envelope('challengeFinish',run.round),attemptId:run.attemptId,answers:run.answers});if(marker!==view)return;if(!result?.ok)throw new Error(result?.error||'尚未確認成績');const round=run.round;sessionStorage.removeItem(stateKey(round));resultPage(round,result,false);}
   catch(error){if(marker!==view)return;$('#cup-error').textContent=error.message;$('#cup-retry').hidden=false;}
  }
  function resultPage(round,result,practice,previous=false){clearTimer();app.innerHTML=`<section class="round-title"><div class="round-symbol">🏆</div><div class="eyebrow">CHALLENGE ${round} COMPLETE</div><h1>第 ${round} 場${previous?'本次成績已確認':'挑戰完成'}！</h1><div class="cup-score">${Number(result.correct)*10}<small> / 100 分</small></div><p>答對 ${Number(result.correct)} / 10 題 · 用時 ${Number(result.elapsed)} 秒</p><p>${practice?'這是自由練習，不影響排行榜。':'老師端已確認正式成績。每人每場保留最高分，同分保留較短用時。'}</p><div class="action-row"><button id="cup-show-board" class="primary">查看本班排名</button><button id="cup-play-again">再次正式挑戰</button><button id="cup-home">回到首頁</button></div></section>`;
