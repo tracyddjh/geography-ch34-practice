@@ -46,7 +46,8 @@ function doPost(e){
   try{
     if(!e||!e.postData||e.postData.contents.length>5000)throw new Error('無效的請求');
     const d=JSON.parse(e.postData.contents);validate_(d);
-    lock=LockService.getScriptLock();lock.waitLock(25000);
+    // 習作交卷使用獨立鎖，不與逐題精熟紀錄排隊。
+    lock=d.type==='mixedExam'?LockService.getUserLock():LockService.getScriptLock();lock.waitLock(25000);
     const ss=spreadsheet_();
     if(d.type==='selfStudyExam')return selfStudyExamPost_(ss,d);
     if(d.type==='mixedExam')return mixedExamPost_(ss,d);
@@ -91,14 +92,16 @@ function updateSummary_(ss,d){
 function doGet(e){
   const p=e&&e.parameter||{};
   if(p.action==='challengeInfo'||p.action==='leaderboard')return challengeGet_(p);
-  if(p.action!=='receipt')return json_({ok:true,service:'geography-ch34-v2',message:'成績接收器已啟用；此網址不提供學生名單或成績查詢。'});
+  if(p.action!=='receipt')return json_({ok:true,service:'geography-ch34-v2',message:'成績接收器已啟用'});
   if(!/^geoReceipt_[a-f0-9]{32}$/i.test(p.callback||''))return json_({ok:false,error:'無效的回呼格式'});
   let ok=false,result;
-  try{const sh=spreadsheet_().getSheetByName('挑戰收件');if(sh){const row=sh.getDataRange().getValues().slice(1).find(r=>r[0]===p.eventId&&r[1]===p.receiptToken);if(row){ok=true;result=JSON.parse(row[2]);}}}catch(error){console.error(String(error));}
   if(/^[a-f0-9-]{36}$/i.test(p.eventId||'')&&/^[a-f0-9-]{36}$/i.test(p.receiptToken||'')){
-    try{const cached=JSON.parse(CacheService.getScriptCache().get(p.eventId)||'null');ok=ok||!!cached&&cached.ok===true&&cached.token===p.receiptToken;}catch(error){console.error(String(error));}
+    try{const cached=JSON.parse(CacheService.getScriptCache().get(p.eventId)||'null');if(cached&&cached.ok===true&&cached.token===p.receiptToken){ok=true;result=cached.result;}}catch(error){console.error(String(error));}
+    if(!ok)try{
+      const ss=spreadsheet_();result=mixedExamReceipt_(ss,p);ok=!!result;
+      if(!ok){const sh=ss.getSheetByName('挑戰收件');if(sh&&sh.getLastRow()>1){const found=sh.getRange(2,1,sh.getLastRow()-1,1).createTextFinder(p.eventId).matchEntireCell(true).findNext();if(found){const row=sh.getRange(found.getRow(),1,1,3).getValues()[0];if(String(row[1])===p.receiptToken){result=JSON.parse(row[2]);ok=true;}}}}
+    }catch(error){console.error(String(error));}
   }
-  // Only a receipt is returned; no class, name, score, or answer is exposed by GET.
   return ContentService.createTextOutput(p.callback+'('+JSON.stringify({ok:ok,result:result,error:ok?null:'尚未確認寫入；請稍後重試'})+');').setMimeType(ContentService.MimeType.JAVASCRIPT);
 }
 function json_(value){return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);}

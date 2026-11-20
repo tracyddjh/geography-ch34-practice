@@ -44,12 +44,16 @@ function mixedExamPost_(ss,d){
       ...answers.map(a=>'ABCD'[a]),d.createdAt,version,d.trainingId,
       JSON.stringify(d.order),signature]);
   }
-  const receipts=ensureSheet_(ss,'挑戰收件',CUP_RECEIPTS);
-  const receipt=receipts.getLastRow()>1?receipts.getRange(2,1,receipts.getLastRow()-1,1)
-    .createTextFinder(d.eventId).matchEntireCell(true).findNext():null;
-  if(!receipt)receipts.appendRow([d.eventId,d.receiptToken,JSON.stringify(result)]);
   SpreadsheetApp.flush();
   CacheService.getScriptCache().put(d.eventId,
-    JSON.stringify({token:d.receiptToken,ok:true}),21600);
+    JSON.stringify({token:d.receiptToken,ok:true,result:result}),21600);
   return json_({ok:true,result:result});
+}
+
+// 正式成績列本身就是永久收據，無須與挑戰賽共用收件工作表。
+function mixedExamReceipt_(ss,p){
+ const sh=ss.getSheetByName('第3–4課習作測驗成績');if(!sh||sh.getLastRow()<2)return null;
+ const found=sh.getRange(2,1,sh.getLastRow()-1,1).createTextFinder(p.eventId).matchEntireCell(true).findNext();if(!found)return null;
+ const row=sh.getRange(found.getRow(),1,1,8).getValues()[0];if(String(row[1])!==p.receiptToken)return null;
+ return {score:Number(row[6]),correct:Number(row[7]),total:20,status:'submitted'};
 }
