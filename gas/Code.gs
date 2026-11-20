@@ -46,8 +46,8 @@ function doPost(e){
   try{
     if(!e||!e.postData||e.postData.contents.length>5000)throw new Error('無效的請求');
     const d=JSON.parse(e.postData.contents);validate_(d);
-    // 習作交卷使用獨立鎖，不與逐題精熟紀錄排隊。
-    lock=d.type==='mixedExam'?LockService.getUserLock():LockService.getScriptLock();lock.waitLock(25000);
+    // 測驗及挑戰使用較短的寫入佇列，不與逐題精熟紀錄排隊。
+    lock=d.type?LockService.getUserLock():LockService.getScriptLock();lock.waitLock(25000);
     const ss=spreadsheet_();
     if(d.type==='selfStudyExam')return selfStudyExamPost_(ss,d);
     if(d.type==='mixedExam')return mixedExamPost_(ss,d);
@@ -126,9 +126,10 @@ function hasMastery_(ss,d){
 function challengePost_(ss,d){
  if(!['challengeStart','challengeFinish'].includes(d.type)||!Number.isInteger(d.round)||d.round<1||d.round>3)throw new Error('挑戰場次錯誤');
  const receipts=ensureSheet_(ss,'挑戰收件',CUP_RECEIPTS);
- const prior=receipts.getDataRange().getValues().slice(1).find(r=>r[0]===d.eventId);
+ const priorCell=receipts.getLastRow()>1?receipts.getRange(2,1,receipts.getLastRow()-1,1).createTextFinder(d.eventId).matchEntireCell(true).findNext():null;
+ const prior=priorCell?receipts.getRange(priorCell.getRow(),1,1,3).getValues()[0]:null;
  if(prior){if(prior[1]!==d.receiptToken)throw new Error('確認碼錯誤');return json_({ok:true});}
- const sheet=ensureSheet_(ss,'挑戰成績',CUP_HEADERS),rows=cupRows_(ss);
+ const sheet=ensureSheet_(ss,'挑戰成績',CUP_HEADERS),rows=sheet.getDataRange().getValues().slice(1);
  const matches=r=>String(r[1])===safeText_(d.student.className.trim())&&String(r[2])===String(Number(d.student.seat))&&Number(r[3])===d.round&&r[4]===d.trainingId;
  const idx=d.type==='challengeFinish'?rows.findIndex(r=>matches(r)&&r[5]===d.attemptId):rows.findIndex(r=>matches(r)&&!r[7]);
  const row=idx<0?null:rows[idx];
@@ -159,7 +160,9 @@ function challengePost_(ss,d){
    result={ok:true,completed:true,correct,elapsed};
   }
  }
- receipts.appendRow([d.eventId,d.receiptToken,JSON.stringify(result)]);SpreadsheetApp.flush();return json_({ok:true});
+ receipts.appendRow([d.eventId,d.receiptToken,JSON.stringify(result)]);SpreadsheetApp.flush();
+ CacheService.getScriptCache().put(d.eventId,JSON.stringify({token:d.receiptToken,ok:true,result:result}),21600);
+ return json_({ok:true});
 }
 function challengeGet_(p){
  if(!/^geoCup_[a-f0-9]{32}$/i.test(p.callback||''))return json_({ok:false,error:'無效的回呼'});
