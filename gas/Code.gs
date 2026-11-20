@@ -124,12 +124,13 @@ function hasMastery_(ss,d){
  return Object.keys(ANSWERS).every(q=>wins[q]>=2);
 }
 function challengePost_(ss,d){
- if(!['challengeStart','challengeFinish'].includes(d.type)||!Number.isInteger(d.round)||d.round<1||d.round>3)throw new Error('挑戰場次錯誤');
+ if(!['challengeStart','challengeFinish','challengeSubmit'].includes(d.type)||!Number.isInteger(d.round)||d.round<1||d.round>3)throw new Error('挑戰場次錯誤');
  const receipts=ensureSheet_(ss,'挑戰收件',CUP_RECEIPTS);
  const priorCell=receipts.getLastRow()>1?receipts.getRange(2,1,receipts.getLastRow()-1,1).createTextFinder(d.eventId).matchEntireCell(true).findNext():null;
  const prior=priorCell?receipts.getRange(priorCell.getRow(),1,1,3).getValues()[0]:null;
  if(prior){if(prior[1]!==d.receiptToken)throw new Error('確認碼錯誤');return json_({ok:true});}
  const sheet=ensureSheet_(ss,'挑戰成績',CUP_HEADERS),rows=sheet.getDataRange().getValues().slice(1);
+ if(d.type==='challengeSubmit')return challengeSubmit_(ss,d,sheet,rows,receipts);
  const matches=r=>String(r[1])===safeText_(d.student.className.trim())&&String(r[2])===String(Number(d.student.seat))&&Number(r[3])===d.round&&r[4]===d.trainingId;
  const idx=d.type==='challengeFinish'?rows.findIndex(r=>matches(r)&&r[5]===d.attemptId):rows.findIndex(r=>matches(r)&&!r[7]);
  const row=idx<0?null:rows[idx];
@@ -180,4 +181,26 @@ function challengeGet_(p){
  }catch(error){data={ok:false,error:'排行榜暫時無法讀取，請稍後重試'};}
  // Public projection contains no student names, training IDs, or receipt tokens.
  return ContentService.createTextOutput(p.callback+'('+JSON.stringify(data)+');').setMimeType(ContentService.MimeType.JAVASCRIPT);
+}
+
+// 開賽不呼叫老師端；完成後才一次寫入。分數仍由伺服器核對。
+function challengeSubmit_(ss,d,sheet,rows,receipts){
+ if(d.timingMode!=='student-v1'||!/^[a-f0-9-]{36}$/i.test(d.attemptId||''))throw new Error('挑戰識別格式錯誤');
+ const ids=CHALLENGE_ROUNDS[d.round-1];
+ if(!Array.isArray(d.answers)||d.answers.length!==10||new Set(d.answers.map(a=>a.questionId)).size!==10||d.answers.some(a=>!ids.includes(a.questionId)||!Number.isInteger(a.selected)||a.selected<0||a.selected>3))throw new Error('挑戰答案不完整');
+ const elapsed=d.elapsedSeconds;
+ if(!Number.isInteger(elapsed)||elapsed<1||elapsed>604800||!Number.isFinite(d.startedAt)||!Number.isFinite(d.completedAt)||d.completedAt<d.startedAt||elapsed!==Math.max(1,Math.ceil((d.completedAt-d.startedAt)/1000)))throw new Error('挑戰用時格式錯誤');
+ const idx=rows.findIndex(r=>r[4]===d.trainingId&&r[5]===d.attemptId&&String(r[1])===safeText_(d.student.className.trim())&&String(r[2])===String(Number(d.student.seat))&&Number(r[3])===d.round),row=idx<0?null:rows[idx];
+ let result;
+ if(row){
+  if(!row[7]||row[10]!==JSON.stringify(d.answers)||Number(row[9])!==elapsed)throw new Error('同一挑戰的內容不符');
+  result={ok:true,completed:true,correct:Number(row[8]),elapsed:Number(row[9])};
+ }else{
+  const correct=d.answers.filter(a=>ANSWERS[a.questionId]===a.selected).length;
+  sheet.appendRow([cupKey_(d)+'|'+d.attemptId,safeText_(d.student.className.trim()),String(Number(d.student.seat)),d.round,d.trainingId,d.attemptId,new Date(d.startedAt),new Date(d.completedAt),correct,elapsed,JSON.stringify(d.answers)]);
+  result={ok:true,completed:true,correct,elapsed};
+ }
+ receipts.appendRow([d.eventId,d.receiptToken,JSON.stringify(result)]);SpreadsheetApp.flush();
+ CacheService.getScriptCache().put(d.eventId,JSON.stringify({token:d.receiptToken,ok:true,result}),21600);
+ return json_({ok:true});
 }

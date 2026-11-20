@@ -36,7 +36,8 @@
       while(queue.length){
         const item=queue[0];
         // Simple request avoids an unsupported Apps Script preflight.
-        await fetch(config().gasUrl,{method:'POST',mode:'no-cors',credentials:'omit',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(item),redirect:'follow'});
+        const postControl=new AbortController(),postTimer=setTimeout(()=>postControl.abort(),35000);
+        try{await fetch(config().gasUrl,{signal:postControl.signal,method:'POST',mode:'no-cors',credentials:'omit',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(item),redirect:'follow'});}finally{clearTimeout(postTimer);}
         const response=await receipt(config().gasUrl,item);
         if(!response?.ok)throw new Error(response?.error||'GAS 尚未確認寫入，將保留紀錄再試');
         queue.shift();save();confirmed++;notify();
@@ -49,7 +50,7 @@
   function request(event){return new Promise((resolve,reject)=>{
     let id,timer;const listener=e=>{if(e.detail.eventId!==id)return;clearTimeout(timer);window.removeEventListener('cup-rpc-result',listener);resolve(e.detail.result);};
     window.addEventListener('cup-rpc-result',listener);id=enqueue(event);
-    timer=setTimeout(()=>{window.removeEventListener('cup-rpc-result',listener);reject(new Error('尚未收到確認；資料已保留，請回首頁重試回傳後再進入挑戰。'));},60000);
+    timer=setTimeout(()=>{window.removeEventListener('cup-rpc-result',listener);reject(new Error('尚未收到排名確認；作答資料已保留，請稍後按「重試送出」。'));},60000);
   });}
   window.CUP_REPORTER={enqueue,flush,status,exportPending,validUrl,request};
   window.addEventListener('online',flush);
